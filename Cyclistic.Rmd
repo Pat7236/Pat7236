@@ -1,0 +1,372 @@
+---
+title: "Cyclistic Data Analysis"
+author: "Patricia Ellis"
+date: "08/29/2021"
+output:
+  html_document:
+    df_print: paged
+---
+
+ 
+
+### Deliverables:
+Produce a report with the following deliverables:   
+1. A clear statement of the business task   
+2. A description of all data sources used   
+3. Documentation of any cleaning or manipulation of data   
+4. A summary of your analysis   
+5. Supporting visualizations and key findings   
+6. Your top three recommendations based on your analysis  
+
+
+### Business Task:
+How do annual members and casual riders use Cyclistic bikes differently?
+
+### Data Source:
+Motivate International Inc. Public use
+12 months of divvy trip data from 8/2020 to 7/2021
+Saved in local folder, uploaded to Google Cloud bucket and uploaded to Big Query
+
+I will be working in R studio due to the large amount of data.
+
+Load packages
+```{r include=FALSE}
+install.packages("tidyverse")
+install.packages("dplyr")
+install.packages("ggplot2")
+install.packages("lubridate")
+install.packages("stringr")
+install.packages("purrr")
+install.packages("forcats")
+install.packages("geosphere")
+install.packages("gridExtra")
+install.packages("data.table")
+install.packages("ggmap")
+
+```
+
+
+Load the libraries
+```{r include=FALSE}
+library(tidyverse)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(tidyr)
+library(lubridate)
+library(stringr)
+library(forcats)
+library(purrr)
+library(geosphere)
+library(gridExtra)
+library(data.table)
+library(ggmap)
+
+```
+
+Install and read the data sets.
+
+```{r}
+Aug_20 <- read_csv("202008-divvy-tripdata.csv")
+Sep_20 <- read_csv("202009-divvy-tripdata.csv")
+Oct_20 <- read_csv("202010-divvy-tripdata.csv")
+Nov_20 <- read_csv("202011-divvy-tripdata.csv")
+Dec_20 <- read_csv("202012-divvy-tripdata.csv")
+Jan_21 <- read_csv("202101-divvy-tripdata.csv")
+Feb_21 <- read_csv("202102-divvy-tripdata.csv")
+Mar_21 <- read_csv("202103-divvy-tripdata.csv")
+Apr_21 <- read_csv("202104-divvy-tripdata.csv")
+May_21 <- read_csv("202105-divvy-tripdata.csv")
+Jun_21 <- read_csv("202106-divvy-tripdata.csv")
+Jul_21 <- read_csv("202107-divvy-tripdata.csv")
+```
+
+Some data types for start and end_station need to be changed.
+
+```{r}
+Nov_20 <- mutate(Nov_20, start_station_id = as.character(start_station_id), 
+                   end_station_id = as.character(end_station_id))
+Oct_20 <- mutate(Oct_20, start_station_id = as.character(start_station_id), 
+                   end_station_id = as.character(end_station_id))
+Sep_20 <- mutate(Sep_20, start_station_id = as.character(start_station_id), 
+                   end_station_id = as.character(end_station_id))
+Aug_20 <- mutate(Aug_20, start_station_id = as.character(start_station_id), 
+                   end_station_id = as.character(end_station_id))
+
+```
+
+Lets check that it worked
+
+```{r}
+str(Nov_20)
+```
+Now we want to combine our data into a single table
+
+```{r}
+total_year <- bind_rows(Aug_20, Sep_20, Oct_20, Nov_20, Dec_20, Jan_21, Feb_21, Mar_21, Apr_21, May_21, Jun_21, Jul_21)
+
+```
+
+### Cleaning:
+Check for duplicates in ride_id
+
+```{r}
+total_year <- total_year[!duplicated(total_year$ride_id), ]
+print(paste("Removed", nrow(total_year) - nrow(total_year), "duplicated rows"))
+```
+
+
+
+```{r}
+is.na_remove <- total_year$ride_id[!is.na(total_year$ride_id)]
+```
+
+```{r}
+is.na_remove <- total_year$rideable_type[!is.na(total_year$rideable_type)]
+```
+
+```{r}
+is.na_remove <- total_year$started_at[!is.na(total_year$started_at)]
+```
+
+```{r}
+is.na_remove <- total_year$ended_at[!is.na(total_year$ended_at)]
+```
+
+```{r}
+is.na_remove <- total_year$start_station_name[!is.na(total_year$start_station_name)]
+```
+
+```{r}
+is.na_remove <- total_year$start_station_id[!is.na(total_year$start_station_id)]
+```
+
+```{r}
+is.na_remove <- total_year$end_station_name[!is.na(total_year$end_station_name)]
+```
+
+```{r}
+is.na_remove <- total_year$end_station_id[!is.na(total_year$end_station_id)]
+```
+
+```{r}
+is.na_remove <- total_year$start_lat[!is.na(total_year$start_lat)]
+```
+
+```{r}
+is.na_remove <- total_year$start_lng[!is.na(total_year$start_lng)]
+```
+
+```{r}
+is.na_remove <- total_year$end_lat[!is.na(total_year$end_lat)]
+```
+
+```{r}
+is.na_remove <- total_year$end_lng[!is.na(total_year$end_lng)]
+```
+
+```{r}
+is.na_remove <- total_year$member_casual[!is.na(total_year$member_casual)]
+```
+
+### Analysis:
+
+Let's calculate ride duration and create a new column.
+
+```{r}
+total_year$ride_duration <-
+  difftime(total_year$ended_at, total_year$started_at, units = "mins")
+```
+
+```{r}
+is.na_remove <- total_year$ride_duration[!is.na(total_year$ride_duration)]
+```
+
+
+
+
+
+
+Let's determine the day of the week for each ride.
+
+```{r}
+total_year$day_of_week <-
+  as.integer(wday(as.Date(total_year$started_at), week_start = 1))
+```
+
+
+Calculate the distance:
+
+```{r}
+total_year$ride_distance <- distGeo(matrix(c(total_year$start_lng, total_year$start_lat), ncol = 2), matrix(c(total_year$end_lng, total_year$end_lat), ncol = 2))
+total_year$ride_distance <- total_year$ride_distance/1000
+
+```
+
+Checking for trip duration less than 0
+
+```{r}
+nrow(subset(total_year,ride_duration < 0))
+```
+Remove the negative trip durations   
+```{r}
+total_year <- total_year[!(total_year$ride_duration < 0),]
+```
+
+Checking for test rides that were made by company for quality checks  
+```{r}
+nrow(subset(total_year, start_station_name %like% "TEST"))
+nrow(subset(total_year, start_station_name %like% "test"))
+nrow(subset(total_year, start_station_name %like% "Test"))
+```
+Remove test rides  
+```{r}
+total_year<- total_year[!((total_year$start_station_name %like% "TEST" | total_year$start_station_name %like% "test")),]
+```
+
+Check the dataframe  
+```{r}
+glimpse(total_year)
+```
+### Analysis  
+Aggregating total ride duration by user type
+```{r}
+setNames(aggregate(ride_duration ~ member_casual, total_year, sum), c("userType", "total_ride_duration(mins)"))
+```
+
+
+
+
+Let's look at the number of rides per rider type.
+
+```{r}
+total_year %>% count(member_casual)
+```
+Who takes more rides, members or casual users?  
+Members have taken 526,923 more rides than casual users.
+
+What are the average duration and distances for user type?
+
+Calculate the averages:
+
+```{r}
+is.na_remove <- total_year$ride_distance[!is.na(total_year$ride_distance)]
+```
+
+```{r echo=TRUE}
+userType_mean <- total_year %>% group_by(member_casual) %>% summarise(mean_time = mean(ride_duration), mean_distance = mean(ride_distance, na.rm = TRUE))
+
+membervstime <- ggplot(userType_mean) + 
+                geom_col(mapping=aes(x=member_casual,y=mean_time,fill=member_casual), show.legend = FALSE) +
+                labs(title = "Mean Travel Time by User Type",x="User Type",y="Mean Time in Sec")
+
+membervsdistance <- ggplot(userType_mean) + 
+                    geom_col(mapping=aes(x=member_casual,y=mean_distance,fill=member_casual), show.legend = FALSE)+
+                    labs(title = "Mean Travel Distance by User Type",x="User Type",y="Mean distance In km",caption = "Data by Motivate International Inc")
+
+grid.arrange(membervstime, membervsdistance, ncol = 2, nrow = 1)
+```
+
+Let's Look at the days of the week.
+
+
+```{r}
+total_year %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n(), average_duration = mean(ride_duration),.groups = 'drop') %>% 
+  arrange(member_casual, weekday)  %>% 
+  ggplot(aes(x = weekday, y = number_of_rides, fill = member_casual)) +
+  geom_col(position = "dodge") +
+  labs(title = "Number of Rides by User Type by Week Day",x="Days of the week",y="Number of rides",caption = "Data by Motivate International Inc", fill="User type") +
+  theme(legend.position="top")
+```
+
+Who takes longer duration rides, members or casual users?  
+Casual users spend more time on the bikes, it's a good assumption that members are using the bikes to commute to work and don't waste time in getting there.
+
+What day(s) of the week have the most riders by user type?  
+Casual users are riding on the weekends more than week days suggesting that they may be tourists visiting on the weekend.  
+Members are more prevalent on the week days further suggesting the idea that they are commuting to work.
+
+Average ride time by each day for members vs casual users  
+```{r include=FALSE}
+aggregate(total_year$ride_duration ~ total_year$member_casual + total_year$day_of_week, FUN = mean)
+```
+
+```{r}
+total_year %>% 
+  mutate(weekday = day_of_week) %>% 
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n(),average_duration = mean(ride_duration)) %>% 
+  arrange(member_casual, weekday)  %>% 
+  ggplot(aes(x = weekday, y = average_duration, fill = member_casual)) +
+  geom_col(position = "dodge")
+
+```
+Which bike type is the most popular?
+
+```{r}
+total_year %>%
+  group_by(member_casual,rideable_type) %>%
+  summarise(number_of_rides = n(),rideable_type) %>%
+  arrange(member_casual, rideable_type) %>%
+  ggplot(aes(x = rideable_type, y = number_of_rides, fill = member_casual)) +
+  geom_col(position = "dodge")
+```
+
+Does station location have a correlation to user type?  
+#Create a table only for the most popular routes (>250 times)
+```{r}
+coordinates_table <- total_year %>% 
+filter(start_lng != end_lng & start_lat != end_lat) %>%
+group_by(start_lng, start_lat, end_lng, end_lat, member_casual, rideable_type) %>%
+summarise(total = n(),.groups="drop") %>%
+filter(total > 250)
+```
+
+#Create two sub tables for each user type  
+```{r}
+casual <- coordinates_table %>% filter(member_casual == "casual")
+member <- coordinates_table %>% filter(member_casual == "member")
+```
+
+#Store the bounding box coordinates for ggmap:
+
+```{r}
+chi_bb <- c(
+  left = -87.700424,
+  bottom = 41.790769,
+  right = -87.554855,
+  top = 41.990119
+)
+
+#Store the stamen map of Chicago  
+
+chicago_stamen <- get_stamenmap(
+  bbox = chi_bb,
+  zoom = 14,
+  maptype = "toner"
+)
+
+```
+
+```{r}
+ggmap(chicago_stamen,darken = c(0.8, "white")) +
+   geom_curve(casual, mapping = aes(x = start_lng, y = start_lat, xend = end_lng, yend = end_lat, alpha= total, color= rideable_type), size = 0.5, curvature = .2,arrow = arrow(length=unit(0.2,"cm"), ends="first", type = "closed")) +
+    coord_cartesian() +
+    labs(title = "Most popular routes by casual users",x=NULL,y=NULL, color="User type", caption = "Thanks to Julen Aranguren for the notebook on Kaggle, Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under CC BY SA and ggmap") +
+    theme(legend.position="bottom")
+
+ggmap(chicago_stamen,darken = c(0.8, "white")) +
+    geom_curve(member, mapping = aes(x = start_lng, y = start_lat, xend = end_lng, yend = end_lat, alpha= total, color=rideable_type), size = 0.5, curvature = .2,arrow = arrow(length=unit(0.2,"cm"), ends="first", type = "closed")) +  
+    coord_cartesian() +
+    labs(title = "Most popular routes by annual members",x=NULL,y=NULL, caption = "Data by Motivate International Inc Thanks to Julen Aranguren for the maps on Kaggle
+Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under CC BY SA. ggmap") +
+    theme(legend.position="bottom")
+
+```
+
+### Recommendations
+
+
